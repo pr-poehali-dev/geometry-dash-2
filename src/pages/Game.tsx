@@ -3,397 +3,680 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 
-const LEVELS: Record<string, { name: string; color: string; speed: number; obstacles: number[] }> = {
-  '1': { name: 'Stereo Madness', color: '#7c3aed', speed: 4, obstacles: [300, 500, 650, 900, 1100, 1400, 1600, 1900, 2100, 2400] },
-  '2': { name: 'Back on Track', color: '#2563eb', speed: 4.5, obstacles: [280, 450, 620, 800, 950, 1200, 1350, 1600, 1800, 2000, 2200, 2500] },
-  '3': { name: 'Polargeist', color: '#059669', speed: 5, obstacles: [250, 400, 550, 700, 850, 1050, 1200, 1400, 1550, 1750, 1900, 2100, 2300, 2600] },
-  '4': { name: 'Dry Out', color: '#d97706', speed: 5.5, obstacles: [220, 380, 520, 670, 820, 970, 1120, 1300, 1450, 1620, 1780, 1950, 2100, 2280, 2450, 2650] },
-  '5': { name: 'Base After Base', color: '#dc2626', speed: 6, obstacles: [200, 350, 480, 630, 760, 910, 1040, 1190, 1340, 1490, 1640, 1790, 1940, 2100, 2250, 2400, 2600, 2800] },
-  '6': { name: "Can't Let Go", color: '#db2777', speed: 6.5, obstacles: [180, 320, 460, 580, 720, 850, 990, 1120, 1260, 1400, 1540, 1680, 1820, 1960, 2100, 2260, 2400, 2560, 2700, 2900] },
+// GD оригинальная физика: 60 ups, скорость ~8.4 блоков/с на нормальной скорости
+// Блок = 40px. Прыжок = 11.18 блоков высота, период = 26 фреймов
+// gravity = 0.9 блоков/фрейм², jump = -9 блоков/фрейм (в единицах блоков)
+
+const BLOCK = 40;           // 1 блок = 40px
+const CANVAS_W = 800;
+const CANVAS_H = 450;
+const GROUND_Y = CANVAS_H - 80; // пол
+const PLAYER_X = 150;        // позиция игрока по X (фиксирована)
+
+// Физика максимально близкая к GD (60 fps)
+const GRAVITY = 0.9;         // блоков/фрейм² → px/фрейм² = 0.9*BLOCK/60²... нет, просто в px
+const JUMP_VY = -12.5;       // px/фрейм — в оригинале ~11.5 блоков/с на 60fps
+const SPEED_NORMAL = 5.77;   // px/фрейм (скорость 1x GD = ~346 px/s при 60fps)
+
+const LEVELS: Record<string, {
+  name: string;
+  color: string;
+  bgColor: string;
+  speed: number;
+  tiles: Array<{ x: number; y: number; type: 'spike' | 'block' | 'spike2' | 'spike3' }>;
+}> = {
+  '1': {
+    name: 'Stereo Madness', color: '#7c3aed', bgColor: '#0d0020',
+    speed: SPEED_NORMAL,
+    tiles: [
+      // x,y в блоках от начала уровня. y=0 — уровень пола
+      { x: 8, y: 0, type: 'spike' },
+      { x: 13, y: 0, type: 'spike' },
+      { x: 14, y: 0, type: 'spike' },
+      { x: 20, y: 0, type: 'spike' },
+      { x: 25, y: 0, type: 'spike' },
+      { x: 26, y: 0, type: 'spike' },
+      { x: 30, y: 0, type: 'spike' },
+      { x: 35, y: 0, type: 'spike' },
+      { x: 36, y: 0, type: 'spike' },
+      { x: 37, y: 0, type: 'spike' },
+      { x: 42, y: 0, type: 'spike' },
+      { x: 47, y: 0, type: 'spike' },
+      { x: 53, y: 0, type: 'spike' },
+      { x: 54, y: 0, type: 'spike' },
+      { x: 60, y: 0, type: 'spike' },
+      { x: 65, y: 0, type: 'spike' },
+      { x: 66, y: 0, type: 'spike' },
+    ],
+  },
+  '2': {
+    name: 'Back on Track', color: '#2563eb', bgColor: '#000d20',
+    speed: SPEED_NORMAL,
+    tiles: [
+      { x: 7, y: 0, type: 'spike' },
+      { x: 12, y: 0, type: 'spike' },
+      { x: 13, y: 0, type: 'spike' },
+      { x: 18, y: 0, type: 'spike' },
+      { x: 23, y: 0, type: 'spike' },
+      { x: 24, y: 0, type: 'spike' },
+      { x: 28, y: 0, type: 'spike' },
+      { x: 29, y: 0, type: 'spike' },
+      { x: 34, y: 0, type: 'spike' },
+      { x: 39, y: 0, type: 'spike' },
+      { x: 40, y: 0, type: 'spike' },
+      { x: 41, y: 0, type: 'spike' },
+      { x: 46, y: 0, type: 'spike' },
+      { x: 51, y: 0, type: 'spike' },
+      { x: 56, y: 0, type: 'spike' },
+      { x: 57, y: 0, type: 'spike' },
+      { x: 62, y: 0, type: 'spike' },
+      { x: 67, y: 0, type: 'spike' },
+      { x: 68, y: 0, type: 'spike' },
+    ],
+  },
+  '3': {
+    name: 'Polargeist', color: '#059669', bgColor: '#001510',
+    speed: SPEED_NORMAL * 1.1,
+    tiles: [
+      { x: 6, y: 0, type: 'spike' },
+      { x: 7, y: 0, type: 'spike' },
+      { x: 11, y: 0, type: 'spike' },
+      { x: 15, y: 0, type: 'spike' },
+      { x: 16, y: 0, type: 'spike' },
+      { x: 20, y: 0, type: 'spike' },
+      { x: 21, y: 0, type: 'spike' },
+      { x: 25, y: 0, type: 'spike' },
+      { x: 29, y: 0, type: 'spike' },
+      { x: 30, y: 0, type: 'spike' },
+      { x: 31, y: 0, type: 'spike' },
+      { x: 35, y: 0, type: 'spike' },
+      { x: 39, y: 0, type: 'spike' },
+      { x: 40, y: 0, type: 'spike' },
+      { x: 44, y: 0, type: 'spike' },
+      { x: 48, y: 0, type: 'spike' },
+      { x: 49, y: 0, type: 'spike' },
+      { x: 53, y: 0, type: 'spike' },
+      { x: 57, y: 0, type: 'spike' },
+      { x: 58, y: 0, type: 'spike' },
+      { x: 62, y: 0, type: 'spike' },
+      { x: 66, y: 0, type: 'spike' },
+      { x: 67, y: 0, type: 'spike' },
+      { x: 68, y: 0, type: 'spike' },
+    ],
+  },
+  '4': {
+    name: 'Dry Out', color: '#d97706', bgColor: '#1a0d00',
+    speed: SPEED_NORMAL * 1.15,
+    tiles: [
+      { x: 5, y: 0, type: 'spike' },
+      { x: 6, y: 0, type: 'spike' },
+      { x: 10, y: 0, type: 'spike' },
+      { x: 11, y: 0, type: 'spike' },
+      { x: 15, y: 0, type: 'spike' },
+      { x: 19, y: 0, type: 'spike' },
+      { x: 20, y: 0, type: 'spike' },
+      { x: 24, y: 0, type: 'spike' },
+      { x: 25, y: 0, type: 'spike' },
+      { x: 26, y: 0, type: 'spike' },
+      { x: 30, y: 0, type: 'spike' },
+      { x: 34, y: 0, type: 'spike' },
+      { x: 35, y: 0, type: 'spike' },
+      { x: 39, y: 0, type: 'spike' },
+      { x: 43, y: 0, type: 'spike' },
+      { x: 44, y: 0, type: 'spike' },
+      { x: 45, y: 0, type: 'spike' },
+      { x: 49, y: 0, type: 'spike' },
+      { x: 53, y: 0, type: 'spike' },
+      { x: 57, y: 0, type: 'spike' },
+      { x: 58, y: 0, type: 'spike' },
+      { x: 62, y: 0, type: 'spike' },
+      { x: 66, y: 0, type: 'spike' },
+      { x: 67, y: 0, type: 'spike' },
+      { x: 68, y: 0, type: 'spike' },
+    ],
+  },
+  '5': {
+    name: 'Base After Base', color: '#dc2626', bgColor: '#1a0000',
+    speed: SPEED_NORMAL * 1.2,
+    tiles: [
+      { x: 5, y: 0, type: 'spike' }, { x: 6, y: 0, type: 'spike' },
+      { x: 9, y: 0, type: 'spike' }, { x: 10, y: 0, type: 'spike' },
+      { x: 13, y: 0, type: 'spike' },
+      { x: 16, y: 0, type: 'spike' }, { x: 17, y: 0, type: 'spike' },
+      { x: 20, y: 0, type: 'spike' }, { x: 21, y: 0, type: 'spike' }, { x: 22, y: 0, type: 'spike' },
+      { x: 25, y: 0, type: 'spike' },
+      { x: 28, y: 0, type: 'spike' }, { x: 29, y: 0, type: 'spike' },
+      { x: 32, y: 0, type: 'spike' }, { x: 33, y: 0, type: 'spike' },
+      { x: 36, y: 0, type: 'spike' },
+      { x: 39, y: 0, type: 'spike' }, { x: 40, y: 0, type: 'spike' }, { x: 41, y: 0, type: 'spike' },
+      { x: 44, y: 0, type: 'spike' }, { x: 45, y: 0, type: 'spike' },
+      { x: 48, y: 0, type: 'spike' },
+      { x: 51, y: 0, type: 'spike' }, { x: 52, y: 0, type: 'spike' },
+      { x: 55, y: 0, type: 'spike' }, { x: 56, y: 0, type: 'spike' }, { x: 57, y: 0, type: 'spike' },
+      { x: 60, y: 0, type: 'spike' },
+      { x: 63, y: 0, type: 'spike' }, { x: 64, y: 0, type: 'spike' },
+      { x: 67, y: 0, type: 'spike' }, { x: 68, y: 0, type: 'spike' },
+    ],
+  },
+  '6': {
+    name: "Can't Let Go", color: '#db2777', bgColor: '#1a0010',
+    speed: SPEED_NORMAL * 1.25,
+    tiles: [
+      { x: 4, y: 0, type: 'spike' }, { x: 5, y: 0, type: 'spike' },
+      { x: 8, y: 0, type: 'spike' }, { x: 9, y: 0, type: 'spike' },
+      { x: 12, y: 0, type: 'spike' },
+      { x: 14, y: 0, type: 'spike' }, { x: 15, y: 0, type: 'spike' },
+      { x: 18, y: 0, type: 'spike' }, { x: 19, y: 0, type: 'spike' }, { x: 20, y: 0, type: 'spike' },
+      { x: 23, y: 0, type: 'spike' },
+      { x: 25, y: 0, type: 'spike' }, { x: 26, y: 0, type: 'spike' },
+      { x: 29, y: 0, type: 'spike' }, { x: 30, y: 0, type: 'spike' },
+      { x: 33, y: 0, type: 'spike' }, { x: 34, y: 0, type: 'spike' }, { x: 35, y: 0, type: 'spike' },
+      { x: 38, y: 0, type: 'spike' },
+      { x: 40, y: 0, type: 'spike' }, { x: 41, y: 0, type: 'spike' },
+      { x: 44, y: 0, type: 'spike' }, { x: 45, y: 0, type: 'spike' }, { x: 46, y: 0, type: 'spike' },
+      { x: 49, y: 0, type: 'spike' }, { x: 50, y: 0, type: 'spike' },
+      { x: 53, y: 0, type: 'spike' },
+      { x: 56, y: 0, type: 'spike' }, { x: 57, y: 0, type: 'spike' }, { x: 58, y: 0, type: 'spike' },
+      { x: 61, y: 0, type: 'spike' }, { x: 62, y: 0, type: 'spike' },
+      { x: 65, y: 0, type: 'spike' }, { x: 66, y: 0, type: 'spike' }, { x: 67, y: 0, type: 'spike' }, { x: 68, y: 0, type: 'spike' },
+    ],
+  },
 };
 
-const GROUND_Y = 400;
-const PLAYER_SIZE = 40;
-const PLAYER_X = 100;
-const OBSTACLE_WIDTH = 40;
-const OBSTACLE_HEIGHT = 40;
-const GRAVITY = 0.6;
-const JUMP_FORCE = -13;
-const LEVEL_LENGTH = 3000;
+const LEVEL_BLOCKS = 75; // длина уровня в блоках
 
 interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  color: string;
+  x: number; y: number;
+  vx: number; vy: number;
+  life: number; color: string;
+  size: number;
 }
 
 const Game = () => {
   const { levelId } = useParams<{ levelId: string }>();
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gameStateRef = useRef({
-    playerY: GROUND_Y - PLAYER_SIZE,
+
+  const gs = useRef({
+    // Позиция игрока в мировых координатах (px)
+    playerY: GROUND_Y - BLOCK,    // верхний край
     playerVY: 0,
     isOnGround: true,
-    cameraX: 0,
+    cameraX: 0,                   // сколько пикселей прокрутили
     alive: true,
     won: false,
-    rotation: 0,
+    rotation: 0,                  // в градусах
+    targetRotation: 0,
     particles: [] as Particle[],
     attempts: 1,
+    jumpPressed: false,            // для единственного прыжка на нажатие
   });
+
   const animFrameRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+  const accTimeRef = useRef<number>(0);
+  const FIXED_DT = 1000 / 60; // фиксированный физический тик 60fps
+
   const [gameStatus, setGameStatus] = useState<'playing' | 'dead' | 'won'>('playing');
   const [attempts, setAttempts] = useState(1);
   const [progress, setProgress] = useState(0);
 
   const level = LEVELS[levelId || '1'] || LEVELS['1'];
+  const levelLengthPx = LEVEL_BLOCKS * BLOCK;
 
-  const spawnDeathParticles = (x: number, y: number) => {
-    const gs = gameStateRef.current;
-    for (let i = 0; i < 20; i++) {
-      gs.particles.push({
-        x, y,
-        vx: (Math.random() - 0.5) * 8,
-        vy: (Math.random() - 0.5) * 8,
+  const spawnDeathParticles = useCallback((worldX: number, worldY: number) => {
+    const state = gs.current;
+    for (let i = 0; i < 16; i++) {
+      const angle = (i / 16) * Math.PI * 2;
+      const speed = 3 + Math.random() * 5;
+      state.particles.push({
+        x: worldX, y: worldY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2,
         life: 1,
         color: level.color,
+        size: 4 + Math.random() * 4,
       });
     }
-  };
+  }, [level.color]);
 
   const resetGame = useCallback(() => {
-    const gs = gameStateRef.current;
-    gs.playerY = GROUND_Y - PLAYER_SIZE;
-    gs.playerVY = 0;
-    gs.isOnGround = true;
-    gs.cameraX = 0;
-    gs.alive = true;
-    gs.won = false;
-    gs.rotation = 0;
-    gs.particles = [];
-    gs.attempts += 1;
-    setAttempts(gs.attempts);
+    const state = gs.current;
+    state.playerY = GROUND_Y - BLOCK;
+    state.playerVY = 0;
+    state.isOnGround = true;
+    state.cameraX = 0;
+    state.alive = true;
+    state.won = false;
+    state.rotation = 0;
+    state.targetRotation = 0;
+    state.particles = [];
+    state.jumpPressed = false;
+    state.attempts += 1;
+    setAttempts(state.attempts);
     setGameStatus('playing');
     setProgress(0);
   }, []);
 
+  // Прыжок — только один раз на событие
   const jump = useCallback(() => {
-    const gs = gameStateRef.current;
-    if (!gs.alive || gs.won) return;
-    if (gs.isOnGround) {
-      gs.playerVY = JUMP_FORCE;
-      gs.isOnGround = false;
+    const state = gs.current;
+    if (!state.alive || state.won) return;
+    if (state.isOnGround) {
+      // В GD прыжковая сила = ~8.5 блоков/с при 60fps
+      state.playerVY = JUMP_VY;
+      state.isOnGround = false;
+      // Целевая ротация +90° — GD кубик вращается ровно на 90° за прыжок
+      state.targetRotation = state.rotation + 90;
     }
   }, []);
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'ArrowUp') {
         e.preventDefault();
-        if (gameStatus === 'dead') {
-          resetGame();
-        } else {
+        if (gameStatus === 'dead' || gameStatus === 'won') {
+          if (gameStatus === 'won') navigate('/');
+          else resetGame();
+          return;
+        }
+        if (!gs.current.jumpPressed) {
+          gs.current.jumpPressed = true;
           jump();
         }
       }
       if (e.code === 'Escape') navigate('/');
     };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        gs.current.jumpPressed = false;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [jump, resetGame, gameStatus, navigate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-    const obstacles = level.obstacles;
+    const tiles = level.tiles;
 
-    const draw = () => {
-      const gs = gameStateRef.current;
-      const W = canvas.width;
-      const H = canvas.height;
+    const physicsStep = () => {
+      const state = gs.current;
+      if (!state.alive || state.won) return;
 
-      ctx.clearRect(0, 0, W, H);
+      // Движение камеры (= движение мира)
+      state.cameraX += level.speed;
 
-      // Background gradient
-      const bg = ctx.createLinearGradient(0, 0, 0, H);
-      bg.addColorStop(0, '#0a0a1a');
-      bg.addColorStop(1, '#1a0a2e');
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, W, H);
+      // Гравитация (точно как GD: сначала прибавляем скорость, потом позицию)
+      state.playerVY += GRAVITY;
+      // В GD максимальная скорость падения ограничена
+      if (state.playerVY > 15) state.playerVY = 15;
+      state.playerY += state.playerVY;
 
-      // Stars
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      for (let i = 0; i < 50; i++) {
-        const sx = ((i * 137 + gs.cameraX * 0.1) % W + W) % W;
-        const sy = (i * 73) % (H * 0.7);
-        ctx.fillRect(sx, sy, 1.5, 1.5);
-      }
-
-      // Ground
-      const groundGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
-      groundGrad.addColorStop(0, level.color + '99');
-      groundGrad.addColorStop(1, '#000');
-      ctx.fillStyle = groundGrad;
-      ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
-
-      // Ground line glow
-      ctx.shadowColor = level.color;
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = level.color;
-      ctx.fillRect(0, GROUND_Y, W, 3);
-      ctx.shadowBlur = 0;
-
-      // Grid lines on ground
-      ctx.strokeStyle = level.color + '33';
-      ctx.lineWidth = 1;
-      for (let gx = -(gs.cameraX % 80); gx < W; gx += 80) {
-        ctx.beginPath();
-        ctx.moveTo(gx, GROUND_Y);
-        ctx.lineTo(gx, H);
-        ctx.stroke();
-      }
-
-      // Obstacles
-      obstacles.forEach(ox => {
-        const screenX = ox - gs.cameraX;
-        if (screenX < -60 || screenX > W + 60) return;
-
-        ctx.save();
-        ctx.shadowColor = level.color;
-        ctx.shadowBlur = 15;
-
-        // Spike shape
-        ctx.fillStyle = level.color;
-        ctx.beginPath();
-        ctx.moveTo(screenX + OBSTACLE_WIDTH / 2, GROUND_Y - OBSTACLE_HEIGHT);
-        ctx.lineTo(screenX + OBSTACLE_WIDTH, GROUND_Y);
-        ctx.lineTo(screenX, GROUND_Y);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.shadowBlur = 0;
-        ctx.restore();
-      });
-
-      // End portal
-      const endX = LEVEL_LENGTH - gs.cameraX;
-      if (endX > 0 && endX < W + 100) {
-        ctx.save();
-        ctx.shadowColor = '#ffd700';
-        ctx.shadowBlur = 30;
-        const portalGrad = ctx.createLinearGradient(endX - 10, 0, endX + 10, 0);
-        portalGrad.addColorStop(0, 'transparent');
-        portalGrad.addColorStop(0.5, '#ffd700');
-        portalGrad.addColorStop(1, 'transparent');
-        ctx.fillStyle = portalGrad;
-        ctx.fillRect(endX - 10, GROUND_Y - 120, 20, 120);
-        ctx.shadowBlur = 0;
-        ctx.restore();
-      }
-
-      // Player
-      if (gs.alive) {
-        ctx.save();
-        const px = PLAYER_X + PLAYER_SIZE / 2;
-        const py = gs.playerY + PLAYER_SIZE / 2;
-        ctx.translate(px, py);
-        ctx.rotate((gs.rotation * Math.PI) / 180);
-
-        ctx.shadowColor = level.color;
-        ctx.shadowBlur = 20;
-
-        // Player body
-        ctx.fillStyle = level.color;
-        ctx.fillRect(-PLAYER_SIZE / 2, -PLAYER_SIZE / 2, PLAYER_SIZE, PLAYER_SIZE);
-
-        // Inner square
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.fillRect(-PLAYER_SIZE / 4, -PLAYER_SIZE / 4, PLAYER_SIZE / 2, PLAYER_SIZE / 2);
-
-        ctx.shadowBlur = 0;
-        ctx.restore();
-      }
-
-      // Particles
-      gs.particles = gs.particles.filter(p => p.life > 0);
-      gs.particles.forEach(p => {
-        ctx.save();
-        ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 5;
-        ctx.fillRect(p.x - gs.cameraX, p.y, 6, 6);
-        ctx.restore();
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.3;
-        p.life -= 0.05;
-      });
-
-      // HUD
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(0, 0, W, 50);
-
-      ctx.font = 'bold 16px monospace';
-      ctx.fillStyle = '#ffffff99';
-      ctx.fillText(`Попытка ${gs.attempts}`, 16, 32);
-
-      const prog = Math.min(gs.cameraX / (LEVEL_LENGTH - W), 1);
-      ctx.fillStyle = '#ffffff20';
-      ctx.fillRect(W / 2 - 150, 15, 300, 10);
-      ctx.fillStyle = level.color;
-      ctx.shadowColor = level.color;
-      ctx.shadowBlur = 8;
-      ctx.fillRect(W / 2 - 150, 15, 300 * prog, 10);
-      ctx.shadowBlur = 0;
-
-      ctx.fillStyle = '#ffffffcc';
-      ctx.font = 'bold 12px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${Math.round(prog * 100)}%`, W / 2, 40);
-      ctx.textAlign = 'left';
-
-      if (gs.won) {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(0, 0, W, H);
-        ctx.textAlign = 'center';
-        ctx.shadowColor = '#ffd700';
-        ctx.shadowBlur = 30;
-        ctx.font = 'bold 60px monospace';
-        ctx.fillStyle = '#ffd700';
-        ctx.fillText('ПОБЕДА!', W / 2, H / 2 - 20);
-        ctx.shadowBlur = 0;
-        ctx.font = '20px monospace';
-        ctx.fillStyle = '#ffffff99';
-        ctx.fillText(`${gs.attempts} попыток`, W / 2, H / 2 + 30);
-        ctx.textAlign = 'left';
-      }
-    };
-
-    const update = () => {
-      const gs = gameStateRef.current;
-      if (!gs.alive || gs.won) return;
-
-      const W = canvas.width;
-
-      // Physics
-      gs.playerVY += GRAVITY;
-      gs.playerY += gs.playerVY;
-
-      if (gs.playerY >= GROUND_Y - PLAYER_SIZE) {
-        gs.playerY = GROUND_Y - PLAYER_SIZE;
-        gs.playerVY = 0;
-        gs.isOnGround = true;
+      // Пол
+      if (state.playerY >= GROUND_Y - BLOCK) {
+        state.playerY = GROUND_Y - BLOCK;
+        state.playerVY = 0;
+        state.isOnGround = true;
+        // При посадке — snap rotation к ближайшим 90°
+        state.rotation = Math.round(state.rotation / 90) * 90;
+        state.targetRotation = state.rotation;
       } else {
-        gs.isOnGround = false;
+        state.isOnGround = false;
       }
 
-      // Rotation
-      if (!gs.isOnGround) {
-        gs.rotation += 7;
-      } else {
-        gs.rotation = Math.round(gs.rotation / 90) * 90;
+      // Вращение: в воздухе плавно к targetRotation с постоянной угловой скоростью
+      if (!state.isOnGround) {
+        // GD вращает кубик ровно 1 оборот за 2 прыжка (90°/прыжок)
+        // при скорости ~7° в кадр
+        const rotSpeed = 7;
+        const diff = state.targetRotation - state.rotation;
+        if (Math.abs(diff) <= rotSpeed) {
+          state.rotation = state.targetRotation;
+        } else {
+          state.rotation += rotSpeed * Math.sign(diff);
+        }
+        // Если продолжают лететь — продолжаем крутить
+        if (state.rotation >= state.targetRotation && state.playerVY > 0) {
+          state.targetRotation = state.rotation + 90;
+        }
       }
 
-      // Camera
-      gs.cameraX += level.speed;
-
-      // Progress
-      const prog = Math.min(gs.cameraX / (LEVEL_LENGTH - W), 1);
-      setProgress(Math.round(prog * 100));
-
-      // Win condition
-      if (gs.cameraX >= LEVEL_LENGTH - W) {
-        gs.won = true;
-        gs.alive = false;
+      // Конец уровня
+      if (state.cameraX >= levelLengthPx - CANVAS_W) {
+        state.won = true;
+        state.alive = false;
         setGameStatus('won');
         return;
       }
 
-      // Collision with obstacles
-      const playerLeft = PLAYER_X + 4;
-      const playerRight = PLAYER_X + PLAYER_SIZE - 4;
-      const playerTop = gs.playerY + 4;
-      const playerBottom = gs.playerY + PLAYER_SIZE - 4;
+      // Коллизии со спайками
+      // Hitbox игрока — чуть меньше чем визуал (GD-стиль: чуть форжив)
+      const margin = 4;
+      const pLeft  = PLAYER_X + margin;
+      const pRight = PLAYER_X + BLOCK - margin;
+      const pTop   = state.playerY + margin;
+      const pBottom = state.playerY + BLOCK - margin;
 
-      for (const ox of obstacles) {
-        const absOx = ox - gs.cameraX;
-        if (absOx + OBSTACLE_WIDTH < playerLeft || absOx > playerRight) continue;
+      for (const tile of tiles) {
+        const tWorldX = tile.x * BLOCK;
+        const tScreenX = tWorldX - state.cameraX;
 
-        // Spike collision (triangle check)
-        const spikeLeft = absOx;
-        const spikeRight = absOx + OBSTACLE_WIDTH;
-        const spikeTip = GROUND_Y - OBSTACLE_HEIGHT;
+        // Видимость
+        if (tScreenX < -BLOCK * 2 || tScreenX > CANVAS_W + BLOCK) continue;
 
-        if (playerBottom > spikeTip + 5 && playerTop < GROUND_Y && playerRight > spikeLeft + 5 && playerLeft < spikeRight - 5) {
-          gs.alive = false;
-          spawnDeathParticles(PLAYER_X + gs.cameraX, gs.playerY);
-          setGameStatus('dead');
-          setTimeout(() => resetGame(), 800);
-          return;
+        if (tile.type === 'spike') {
+          // Треугольный хитбокс спайка: AABB + triangle check
+          const sLeft = tWorldX + 2;
+          const sRight = tWorldX + BLOCK - 2;
+          const sTip = GROUND_Y - BLOCK + 2; // верхушка
+
+          if (pRight > sLeft && pLeft < sRight && pBottom > sTip && pTop < GROUND_Y) {
+            // Более точная проверка по треугольнику
+            const px_center = (pLeft + pRight) / 2 - tWorldX;
+            const py_bottom = pBottom - sTip;
+            const halfW = (BLOCK / 2);
+            const triW = halfW * (1 - py_bottom / BLOCK);
+            if (Math.abs(px_center - BLOCK / 2) < triW + 2) {
+              state.alive = false;
+              spawnDeathParticles(PLAYER_X + state.cameraX + BLOCK / 2, state.playerY);
+              setGameStatus('dead');
+              setTimeout(() => resetGame(), 700);
+              return;
+            }
+          }
         }
       }
 
-      // Ceiling
-      if (gs.playerY < 0) {
-        gs.alive = false;
-        spawnDeathParticles(PLAYER_X + gs.cameraX, gs.playerY);
+      // Потолок
+      if (state.playerY < 50) {
+        state.alive = false;
+        spawnDeathParticles(PLAYER_X + state.cameraX + BLOCK / 2, state.playerY);
         setGameStatus('dead');
-        setTimeout(() => resetGame(), 800);
+        setTimeout(() => resetGame(), 700);
       }
     };
 
-    const loop = () => {
-      update();
-      draw();
+    const draw = (interpolation: number) => {
+      const state = gs.current;
+      const W = CANVAS_W;
+      const H = CANVAS_H;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Background
+      ctx.fillStyle = level.bgColor;
+      ctx.fillRect(0, 0, W, H);
+
+      // Параллакс-звёзды (2 слоя)
+      for (let layer = 0; layer < 2; layer++) {
+        const parallax = layer === 0 ? 0.15 : 0.35;
+        const alpha = layer === 0 ? 0.3 : 0.6;
+        const size = layer === 0 ? 1 : 2;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        for (let i = 0; i < 30; i++) {
+          const sx = ((i * 173 + state.cameraX * parallax) % W + W) % W;
+          const sy = 30 + (i * 97 + layer * 200) % (GROUND_Y - 60);
+          ctx.fillRect(sx, sy, size, size);
+        }
+      }
+
+      // Сетка пола (GD-стиль)
+      const gridSize = BLOCK;
+      ctx.strokeStyle = level.color + '25';
+      ctx.lineWidth = 1;
+      // Вертикальные линии сетки
+      const gridOffX = -(state.cameraX % gridSize);
+      for (let gx = gridOffX; gx < W; gx += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, GROUND_Y);
+        ctx.stroke();
+      }
+      // Горизонтальные линии сетки (только нижняя часть)
+      for (let gy = GROUND_Y; gy < H; gy += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(W, gy);
+        ctx.stroke();
+      }
+
+      // Пол — заливка
+      const floorGrad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+      floorGrad.addColorStop(0, level.color + 'aa');
+      floorGrad.addColorStop(0.3, level.color + '44');
+      floorGrad.addColorStop(1, '#000000');
+      ctx.fillStyle = floorGrad;
+      ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+      // Линия пола с свечением
+      ctx.shadowColor = level.color;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = level.color;
+      ctx.fillRect(0, GROUND_Y, W, 2);
+      ctx.shadowBlur = 0;
+
+      // Спайки
+      tiles.forEach(tile => {
+        const tWorldX = tile.x * BLOCK;
+        const screenX = tWorldX - state.cameraX;
+        if (screenX < -BLOCK || screenX > W + BLOCK) return;
+
+        if (tile.type === 'spike') {
+          ctx.save();
+          ctx.shadowColor = level.color;
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = level.color;
+          ctx.beginPath();
+          ctx.moveTo(screenX + BLOCK / 2, GROUND_Y - BLOCK); // верхушка
+          ctx.lineTo(screenX + BLOCK, GROUND_Y);              // правый угол
+          ctx.lineTo(screenX, GROUND_Y);                      // левый угол
+          ctx.closePath();
+          ctx.fill();
+          // Светлый отблеск
+          ctx.fillStyle = 'rgba(255,255,255,0.25)';
+          ctx.beginPath();
+          ctx.moveTo(screenX + BLOCK / 2, GROUND_Y - BLOCK);
+          ctx.lineTo(screenX + BLOCK * 0.75, GROUND_Y - BLOCK * 0.4);
+          ctx.lineTo(screenX + BLOCK * 0.5, GROUND_Y - BLOCK * 0.5);
+          ctx.closePath();
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+      });
+
+      // Финишный портал
+      const endScreenX = levelLengthPx - state.cameraX;
+      if (endScreenX > -20 && endScreenX < W + 20) {
+        ctx.save();
+        for (let i = 0; i < 3; i++) {
+          ctx.shadowColor = '#ffd700';
+          ctx.shadowBlur = 20 + i * 10;
+          ctx.strokeStyle = `rgba(255,215,0,${0.3 + i * 0.2})`;
+          ctx.lineWidth = 3 - i;
+          ctx.strokeRect(endScreenX - i * 3, GROUND_Y - BLOCK * 3 - i * 3, BLOCK + i * 6, BLOCK * 3 + i * 3);
+        }
+        ctx.fillStyle = 'rgba(255,215,0,0.08)';
+        ctx.fillRect(endScreenX, GROUND_Y - BLOCK * 3, BLOCK, BLOCK * 3);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+
+      // Игрок
+      if (state.alive) {
+        const interY = state.playerY; // можно добавить интерполяцию позже
+        ctx.save();
+        ctx.translate(PLAYER_X + BLOCK / 2, interY + BLOCK / 2);
+        ctx.rotate((state.rotation * Math.PI) / 180);
+
+        // Свечение
+        ctx.shadowColor = level.color;
+        ctx.shadowBlur = 18;
+
+        // Внешний квадрат
+        ctx.fillStyle = level.color;
+        ctx.fillRect(-BLOCK / 2, -BLOCK / 2, BLOCK, BLOCK);
+
+        // Внутренний квадрат белый
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        const inner = BLOCK * 0.3;
+        ctx.fillRect(-inner / 2, -inner / 2, inner, inner);
+
+        // Орбит-шар (маленькая точка в углу)
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.beginPath();
+        ctx.arc(BLOCK * 0.3, -BLOCK * 0.3, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        // Trail (след) — простой
+        ctx.save();
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = level.color;
+        ctx.fillRect(PLAYER_X - 20, interY + 4, 18, BLOCK - 8);
+        ctx.globalAlpha = 0.08;
+        ctx.fillRect(PLAYER_X - 36, interY + 8, 14, BLOCK - 16);
+        ctx.restore();
+      }
+
+      // Частицы смерти
+      state.particles = state.particles.filter(p => p.life > 0);
+      state.particles.forEach(p => {
+        ctx.save();
+        ctx.globalAlpha = p.life;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = p.color;
+        const screenPX = p.x - state.cameraX;
+        ctx.fillRect(screenPX - p.size / 2, p.y - p.size / 2, p.size, p.size);
+        ctx.restore();
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.4;
+        p.life -= 0.04;
+      });
+
+      // HUD
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, W, 48);
+
+      // Попытки
+      ctx.font = 'bold 14px "Courier New", monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Попытка ${state.attempts}`, 16, 30);
+
+      // Прогресс бар
+      const prog = Math.min(state.cameraX / (levelLengthPx - W), 1);
+      const barX = W / 2 - 120;
+      const barW = 240;
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(barX, 16, barW, 8);
+      ctx.fillStyle = level.color;
+      ctx.shadowColor = level.color;
+      ctx.shadowBlur = 6;
+      ctx.fillRect(barX, 16, barW * prog, 8);
+      ctx.shadowBlur = 0;
+
+      ctx.font = 'bold 11px "Courier New", monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(prog * 100)}%`, W / 2, 36);
+
+      // Экран победы
+      if (state.won) {
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 40;
+        ctx.font = 'bold 64px "Courier New", monospace';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText('ПОБЕДА!', W / 2, H / 2 - 30);
+        ctx.shadowBlur = 0;
+        ctx.font = '18px "Courier New", monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText(`Попыток: ${state.attempts}`, W / 2, H / 2 + 20);
+        ctx.font = '14px "Courier New", monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillText('ПРОБЕЛ — в меню', W / 2, H / 2 + 50);
+      }
+
+      ctx.textAlign = 'left';
+    };
+
+    const loop = (timestamp: number) => {
+      if (!lastTimeRef.current) lastTimeRef.current = timestamp;
+      const elapsed = timestamp - lastTimeRef.current;
+      lastTimeRef.current = timestamp;
+
+      // Фиксированный физический шаг
+      accTimeRef.current += elapsed;
+      while (accTimeRef.current >= FIXED_DT) {
+        physicsStep();
+        accTimeRef.current -= FIXED_DT;
+        // Обновляем прогресс не каждый кадр
+        const state = gs.current;
+        const p = Math.min(state.cameraX / (levelLengthPx - CANVAS_W), 1);
+        setProgress(Math.round(p * 100));
+      }
+
+      draw(accTimeRef.current / FIXED_DT);
       animFrameRef.current = requestAnimationFrame(loop);
     };
 
+    lastTimeRef.current = 0;
+    accTimeRef.current = 0;
     animFrameRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [level, resetGame]);
+  }, [level, levelLengthPx, resetGame, spawnDeathParticles]);
 
-  const handleCanvasClick = () => {
+  const handleCanvasInteract = useCallback(() => {
     if (gameStatus === 'dead') return;
+    if (gameStatus === 'won') { navigate('/'); return; }
     jump();
-  };
+  }, [gameStatus, jump, navigate]);
 
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center select-none">
-      <div className="w-full max-w-3xl px-4">
-        <div className="flex items-center justify-between mb-3">
+      <div className="w-full max-w-4xl px-2">
+        <div className="flex items-center justify-between mb-2 px-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => navigate('/')}
-            className="text-white/60 hover:text-white"
+            className="text-white/50 hover:text-white text-xs"
           >
-            <Icon name="ArrowLeft" size={16} className="mr-1" />
+            <Icon name="ArrowLeft" size={14} className="mr-1" />
             Назад
           </Button>
-          <h2 className="text-white font-bold text-lg" style={{ color: level.color }}>
+          <h2 className="font-bold text-base" style={{ color: level.color }}>
             {level.name}
           </h2>
-          <span className="text-white/40 text-sm">ESC — выход</span>
+          <span className="text-white/30 text-xs">ESC — выход</span>
         </div>
 
         <canvas
           ref={canvasRef}
-          width={800}
-          height={450}
-          className="w-full rounded-lg border border-white/10 cursor-pointer"
-          onClick={handleCanvasClick}
-          onTouchStart={(e) => { e.preventDefault(); jump(); }}
-          style={{ touchAction: 'none' }}
+          width={CANVAS_W}
+          height={CANVAS_H}
+          className="w-full rounded-lg border border-white/10 cursor-pointer block"
+          onClick={handleCanvasInteract}
+          onTouchStart={(e) => { e.preventDefault(); handleCanvasInteract(); }}
+          style={{ touchAction: 'none', imageRendering: 'pixelated' }}
         />
 
-        <div className="flex items-center justify-center gap-6 mt-3 text-white/50 text-sm">
-          <span>ПРОБЕЛ / КЛИК — прыжок</span>
+        <div className="flex items-center justify-center gap-4 mt-2 text-white/40 text-xs">
+          <span>ПРОБЕЛ / ЛКМ — прыжок</span>
           <span>•</span>
           <span>Попытка {attempts}</span>
           <span>•</span>
