@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,6 +23,7 @@ interface OnlineRoom {
 
 const Index = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [selectedTab, setSelectedTab] = useState<'levels' | 'online'>('levels');
   const [roomName, setRoomName] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
@@ -100,10 +102,7 @@ const Index = () => {
     }
 
     setSelectedLevel(level.id);
-    toast({
-      title: `Загружаем ${level.name}`,
-      description: 'Приготовьтесь к прыжкам!',
-    });
+    setTimeout(() => navigate(`/game/${level.id}`), 300);
   };
 
   const joinRoom = (room: OnlineRoom) => {
